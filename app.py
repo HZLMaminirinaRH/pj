@@ -1,54 +1,51 @@
 from flask import Flask, request
-import os
-import random
+import os, random, requests
 from pymongo import MongoClient
 
 app = Flask(__name__)
 
-# --- CONFIGURATION ---
-VERIFY_TOKEN = "PJ_2026_Mada"
+VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN")
+PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
+MONGO_URI = os.environ.get("MONGO_URI")
 
-# Ton adresse complète mise à jour (Remplace bien <user_password>)
-MONGO_URI = "mongodb://rahajarisonahmaminirina_db_user:<SYGq8Gzmk5S7rQCE>@ac-wqfc2fe-shard-00-00.3lc6oso.mongodb.net:27017,ac-wqfc2fe-shard-00-01.3lc6oso.mongodb.net:27017,ac-wqfc2fe-shard-00-02.3lc6oso.mongodb.net:27017/?ssl=true&replicaSet=atlas-4uvhfd-shard-0&authSource=admin&appName=Cluster0"
-
-# Connexion à MongoDB Atlas
 client = MongoClient(MONGO_URI)
-db = client.pj_db
-collection = db.pj
+collection = client["pj_db"]["pj"]
 
-@app.route("/webhook", methods=['GET'])
+def send_message(sender_id, text):
+    url = f"https://graph.facebook.com/v19.0/me/messages"
+    params = {"access_token": PAGE_ACCESS_TOKEN}
+    payload = {
+        "recipient": {"id": sender_id},
+        "message": {"text": text}
+    }
+    requests.post(url, params=params, json=payload)
+
+@app.route("/webhook", methods=["GET"])
 def verify():
-    # Vérification exigée par Meta
     token = request.args.get("hub.verify_token")
     challenge = request.args.get("hub.challenge")
     if token == VERIFY_TOKEN:
         return challenge, 200
     return "Erreur Token", 403
 
-@app.route("/webhook", methods=['POST'])
+@app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
-    
     if data.get("object") == "page":
         for entry in data.get("entry", []):
-            for messaging_event in entry.get("messaging", []):
-                if messaging_event.get("message"):
-                    sender_id = messaging_event["sender"]["id"]
-                    
-                    # Logique : Tirer un fragment au sort dans ta base de 634 textes
+            for event in entry.get("messaging", []):
+                if event.get("message"):
+                    sender_id = event["sender"]["id"]
                     try:
                         count = collection.count_documents({})
                         if count > 0:
-                            random_index = random.randint(0, count - 1)
-                            fragment = list(collection.find().limit(1).skip(random_index))[0]
-                            # On récupère le texte (assure-toi que le champ s'appelle 'texte' dans Atlas)
-                            texte_a_envoyer = fragment.get("texte", "Fragment trouvé mais champ 'texte' absent.")
-                            print(f"Prêt à envoyer à {sender_id}: {texte_a_envoyer}")
-                        else:
-                            print("La collection est vide.")
+                            index = random.randint(0, count - 1)
+                            fragment = list(collection.find().limit(1).skip(index))[0]
+                            paragraphes = fragment.get("paragraphes", [])
+                            texte = " ".join(paragraphes) if paragraphes else "Fragment introuvable."
+                            send_message(sender_id, texte)
                     except Exception as e:
-                        print(f"Erreur MongoDB : {e}")
-                        
+                        print(f"Erreur : {e}")
     return "EVENT_RECEIVED", 200
 
 if __name__ == "__main__":
