@@ -1,24 +1,31 @@
 from flask import Flask, request
+import os
 
 app = Flask(__name__)
 
-# Remplacez ceci par votre phrase secrète demain
-VERIFY_TOKEN = "PJ_2026_Mada" 
+# Ton jeton exact (attention aux majuscules/minuscules)
+VERIFY_TOKEN = "PJ_2026_Mada"
 
-@app.route("/", methods=['GET'])
+@app.route("/webhook", methods=['GET'])
 def verify():
-    if request.args.get("hub.mode") == "subscribe" and request.args.get("hub.challenge"):
-        if not request.args.get("hub.verify_token") == VERIFY_TOKEN:
-            return "Verification token mismatch", 403
-        return request.args["hub.challenge"], 200
-    return "Bot PJ opérationnel", 200
+    # Facebook utilise des points (.) dans ses requêtes
+    mode = request.args.get("hub.mode")
+    token = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
 
-@app.route("/", methods=['POST'])
+    if mode == "subscribe" and token == VERIFY_TOKEN:
+        print("WEBHOOK_VERIFIE")
+        return challenge, 200
+    
+    return "Erreur de validation", 403
+
+@app.route("/webhook", methods=['POST'])
 def webhook():
     data = request.get_json()
-    print(data) 
-    return "ok", 200
+    print("Message reçu :", data)
+    return "EVENT_RECEIVED", 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
-
+    # Railway utilise la variable d'environnement PORT
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
